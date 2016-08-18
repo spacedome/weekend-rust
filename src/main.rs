@@ -1,6 +1,8 @@
 extern crate image;
 extern crate nalgebra as na;
-use na::{Vector3, Norm};
+use na::{Vector3, Norm, Dot};
+
+type Vec3 = Vector3<f32>; 
 
 use std::fs::File;
 use std::path::Path;
@@ -14,10 +16,10 @@ fn main() {
 	// Create a new ImgBuf with width: imgx and height: imgy
     let mut imgbuf = image::ImageBuffer::new(imgx, imgy);
 
-    let llc = Vector3::new(-2.0, -1.0, -1.0);
-	let horizont = Vector3::new(4.0, 0.0, 0.0);
-	let vertical = Vector3::new(0.0, 2.0, 0.0);
-	let origin = Vector3::new(0.0, 0.0, 0.0);
+    let llc = Vec3::new(-2.0, -1.0, -1.0);
+	let horizont = Vec3::new(4.0, 0.0, 0.0);
+	let vertical = Vec3::new(0.0, 2.0, 0.0);
+	let origin = Vec3::new(0.0, 0.0, 0.0);
 
     // Iterate over the coordiantes and pixels of the image
     for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
@@ -54,8 +56,18 @@ impl Ray {
 	}
 }
 
+
 fn color(ray: &Ray) -> Vector3<f32> {
+	if hit_sphere(&Vec3::new(0.0, 0.0, -1.0), 0.5, ray) { return Vec3::new(1.0, 0.0, 0.0) }
 	let unit_dir = ray.direction.normalize();
 	let t: f32 = 0.5*(unit_dir.y + 1.0);
 	Vector3::new(1.0-t, 1.0-t, 1.0-t) + (t*Vector3::new(0.5, 0.7, 1.0))
+}
+
+fn hit_sphere(center: &Vector3<f32>, radius: f32, r: &Ray) -> bool {
+	let oc = r.origin - *center;
+	let a = r.direction.norm_squared();
+	let b = 2.0 * r.direction.dot(&oc);
+	let c = oc.norm_squared() - radius*radius;
+	b*b - 4.0*a*c > 0.0
 }
