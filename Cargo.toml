@@ -1,0 +1,9 @@
+[package]
+name = "weekend-tracer"
+version = "0.1.0"
+authors = ["julien <julien@spacedome.tv>"]
+
+[dependencies]
+image = "*"
+nalgebra = "*"
+
