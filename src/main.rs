@@ -22,8 +22,12 @@ fn main() {
     let mut rng = rand::thread_rng();
 
 	// set up scene
-	let worldvec: Vec<Box<Hitable>> = vec![Box::new(Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5)),
-										   Box::new(Sphere::new(Vec3::new(0.0, -100.50, -1.0), 100.0))];
+	let worldvec: Vec<Box<Hitable>> = vec![
+		Box::new(Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5, Box::new(Lambertian::new(0.8, 0.3, 0.3)))),
+		Box::new(Sphere::new(Vec3::new(0.0, -100.5, -1.0), 100.0, Box::new(Lambertian::new(0.8, 0.8, 0.0)))),
+		Box::new(Sphere::new(Vec3::new(1.0, 0.0, -1.0), 0.5, Box::new(Metal::new(0.8, 0.6, 0.2, 0.0)))),
+		Box::new(Sphere::new(Vec3::new(-1.0, 0.0, -1.0), 0.5, Box::new(Metal::new(0.8, 0.8, 0.8, 0.3))))
+	];
 	let world = HitableList::new(worldvec);
 
     // Iterate over the coordiantes and pixels of the image
@@ -34,7 +38,7 @@ fn main() {
 	    	let v = ((ny - y) as f32 + range.ind_sample(&mut rng)) / ny as f32;
 	    	let r = cam.get_ray(u, v);
 	    	// let p = r.point_at_t(2.0);
-	    	col = col + color(&r, &world);
+	    	col = col + color(&r, &world, 0);
 	    }
 	    col = col / (ns as f32);
 	    col = Vec3::new(col.x.sqrt(), col.y.sqrt(), col.z.sqrt());
@@ -48,11 +52,25 @@ fn main() {
     println!("Finished Render");
 }
 
-fn color(ray: &Ray, world: &Hitable) -> Vec3 {
-	let rec = world.hit(ray, 0.0, std::f32::MAX);
+fn color(ray: &Ray, world: &Hitable, depth: i32) -> Vec3 {
+	let rec = world.hit(ray, 0.001, std::f32::MAX);
 	if rec.hit {
-		let target = rec.p + rec.normal + random_in_unit_sphere();
-		0.5 * color(&Ray::new(rec.p, target-rec.p), world)
+		if depth < 50 {
+			match rec.material {
+			    Some(mat) => {
+			    	let (cont, attenuation, scattered) = mat.scatter(ray, &rec);
+			    	if cont {
+						attenuation*color(&scattered, world, depth+1)
+					} else {
+						Vec3::new(0.0, 0.0, 0.0)
+					}
+			    },
+			    None => Vec3::new(0.0, 0.0, 0.0),
+			}
+		}
+		else {
+			Vec3::new(0.0, 0.0, 0.0)
+		}
 	}
 	else {
 		let t = 0.5 * (ray.direction.normalize().y + 1.0);
@@ -78,16 +96,18 @@ impl Ray {
 	}
 }
 
-struct HitRecord {
+struct HitRecord<'a> {
+	material: Option<&'a Box<Material>>,
 	p: Vec3,
 	normal: Vec3,
 	t: f32,
 	hit: bool,
 }
 
-impl HitRecord {
-	fn new() -> HitRecord {
+impl<'a> HitRecord<'a> {
+	fn new() -> HitRecord<'a> {
 		HitRecord {
+			material: None,
 			p: Vec3::new(0.0, 0.0, 0.0),
 			normal: Vec3::new(0.0, 0.0, 0.0),
 			t: 0.0,
@@ -101,13 +121,15 @@ trait Hitable {
 }
 
 struct Sphere {
+	material: Box<Material>,
 	center: Vec3,
 	radius: f32,
 }
 
 impl Sphere {
-	fn new(center: Vec3, radius: f32) -> Sphere {
+	fn new(center: Vec3, radius: f32, material: Box<Material>) -> Sphere {
 		Sphere {
+			material: material,
 			center: center,
 			radius: radius,
 		}
@@ -140,6 +162,7 @@ impl Hitable for Sphere {
 			if temp1 < t_max && temp1 > t_min {
 				let p = ray.point_at_t(temp1);
 				HitRecord {
+					material: Some(&self.material),
 					p: p,
 					normal: (p - self.center) / self.radius,
 					t: temp1,
@@ -149,6 +172,7 @@ impl Hitable for Sphere {
 			else if temp2 < t_max && temp2 > t_min {
 				let p = ray.point_at_t(temp2);
 				HitRecord {
+					material: Some(&self.material),
 					p: p,
 					normal: (p - self.center) / self.radius,
 					t: temp2,
@@ -177,6 +201,7 @@ impl HitableList {
 		}
 	}
 }
+
 
 impl Hitable for HitableList {
 	fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> HitRecord {
@@ -212,5 +237,54 @@ impl Camera {
 
 	fn get_ray(&self, u: f32, v: f32) -> Ray{
 		Ray::new(self.origin, self.llc + u*self.horizont + v*self.vertical - self.origin)
+	}
+}
+
+trait Material {
+	fn scatter(&self, ray: &Ray, rec: &HitRecord) -> (bool, Vec3, Ray);
+}
+
+struct Lambertian {
+	albedo: Vec3,
+}
+
+impl Lambertian {
+	fn new(r: f32, g: f32, b: f32) -> Lambertian {
+		Lambertian {albedo: Vec3::new(r, g, b)}
+	}
+}
+
+impl Material for Lambertian {
+	fn scatter(&self, ray: &Ray, rec: &HitRecord) -> (bool, Vec3, Ray) {
+		let target = rec.p + rec.normal + random_in_unit_sphere();
+		let scattered = Ray::new(rec.p, target-rec.p);
+		(true, self.albedo, scattered)
+	}
+}
+
+fn reflect(v: &Vec3, n: &Vec3) -> Vec3 {
+	*v - ((v.dot(n) * 2.0) * *n)
+}
+
+struct Metal {
+	albedo: Vec3,
+	fuzz: f32,
+}
+
+impl Metal {
+	fn new(r: f32, g: f32, b: f32, fuzz: f32) -> Metal {
+		 
+		Metal {
+			albedo: Vec3::new(r, g, b),
+			fuzz: if fuzz < 0.0 || fuzz > 1.0 { 1.0 } else { fuzz },
+		}
+	}
+}
+
+impl Material for Metal {
+	fn scatter(&self, ray: &Ray, rec: &HitRecord) -> (bool, Vec3, Ray) {
+		let reflected = reflect(&ray.direction.normalize(), &rec.normal);
+		let scattered = Ray::new(rec.p, reflected + self.fuzz*random_in_unit_sphere());
+		(scattered.direction.dot(&rec.normal) > 0.0, self.albedo, scattered)
 	}
 }
