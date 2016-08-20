@@ -1,25 +1,25 @@
 extern crate image;
 extern crate nalgebra as na;
+extern crate rand;
+use std::fs::File;
+use std::path::Path;
+use rand::distributions::{IndependentSample, Range};
 use na::{Vector3, Norm, Dot};
 
 type Vec3 = Vector3<f32>; 
 
-use std::fs::File;
-use std::path::Path;
-
 
 fn main() {
 
-	let imgx = 800;
-	let imgy = 400;
-
+	let nx = 200;
+	let ny = 100;
+	let ns = 100;
 	// Create a new ImgBuf with width: imgx and height: imgy
-    let mut imgbuf = image::ImageBuffer::new(imgx, imgy);
+    let mut imgbuf = image::ImageBuffer::new(nx, ny);
 
-    let llc = Vec3::new(-2.0, -1.0, -1.0);
-	let horizont = Vec3::new(4.0, 0.0, 0.0);
-	let vertical = Vec3::new(0.0, 2.0, 0.0);
-	let origin = Vec3::new(0.0, 0.0, 0.0);
+    let cam = Camera::new();
+    let range = Range::new(0.0, 1.0);
+    let mut rng = rand::thread_rng();
 
 	// set up scene
 	let worldvec: Vec<Box<Hitable>> = vec![Box::new(Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5)),
@@ -28,12 +28,16 @@ fn main() {
 
     // Iterate over the coordiantes and pixels of the image
     for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-    	let u = x as f32 / imgx as f32;
-    	let v = (imgy - y) as f32 / imgy as f32;
-    	let r = Ray::new(origin, llc + (u*horizont) + (v*vertical));
-
-    	// let p = r.point_at_t(2.0);
-    	let col = color(&r, &world);
+    	let mut col = Vec3::new(0.0, 0.0, 0.0);
+    	for _ in 0..ns {
+	    	let u = (x as f32 + range.ind_sample(&mut rng)) / nx as f32 ;
+	    	let v = ((ny - y) as f32 + range.ind_sample(&mut rng)) / ny as f32;
+	    	let r = cam.get_ray(u, v);
+	    	// let p = r.point_at_t(2.0);
+	    	col = col + color(&r, &world);
+	    }
+	    col = col / (ns as f32);
+	    col = Vec3::new(col.x.sqrt(), col.y.sqrt(), col.z.sqrt());
         *pixel = image::Rgb([(col.x*255.99) as u8, (col.y*255.99) as u8, (col.z*255.99) as u8]);
     }
     // Save the image as “fractal.png”
@@ -47,7 +51,8 @@ fn main() {
 fn color(ray: &Ray, world: &Hitable) -> Vec3 {
 	let rec = world.hit(ray, 0.0, std::f32::MAX);
 	if rec.hit {
-		0.5 * Vec3::new(rec.normal.x + 1.0, rec.normal.y + 1.0, rec.normal.z + 1.0)
+		let target = rec.p + rec.normal + random_in_unit_sphere();
+		0.5 * color(&Ray::new(rec.p, target-rec.p), world)
 	}
 	else {
 		let t = 0.5 * (ray.direction.normalize().y + 1.0);
@@ -105,6 +110,17 @@ impl Sphere {
 		Sphere {
 			center: center,
 			radius: radius,
+		}
+	}
+}
+
+fn random_in_unit_sphere() -> Vec3 {
+	let range = Range::new(-1.0, 1.0);
+    let mut rng = rand::thread_rng();
+	loop {
+		let p = 2.0* Vec3::new(range.ind_sample(&mut rng), range.ind_sample(&mut rng), range.ind_sample(&mut rng));
+		if p.norm_squared() > 1.0 {
+			return p
 		}
 	}
 }
@@ -174,5 +190,27 @@ impl Hitable for HitableList {
 			}
 		}
 		record
+	}
+}
+
+struct Camera {
+	origin: Vec3,
+	llc: Vec3, // lower left corner
+	horizont: Vec3,
+	vertical: Vec3,
+}
+
+impl Camera {
+	fn new() -> Camera {
+		Camera {
+			origin: Vec3::new(0.0, 0.0, 0.0),
+			llc: Vec3::new(-2.0, -1.0, -1.0),
+			horizont: Vec3::new(4.0, 0.0, 0.0),
+			vertical: Vec3::new(0.0, 2.0, 0.0),
+		}
+	}
+
+	fn get_ray(&self, u: f32, v: f32) -> Ray{
+		Ray::new(self.origin, self.llc + u*self.horizont + v*self.vertical - self.origin)
 	}
 }

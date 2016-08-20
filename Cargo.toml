@@ -6,4 +6,4 @@ authors = ["julien <julien@spacedome.tv>"]
 [dependencies]
 image = "*"
 nalgebra = "*"
-
+rand = "*"
