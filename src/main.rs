@@ -140,7 +140,11 @@ fn random_in_unit_sphere() -> Vec3 {
 	let range = Range::new(-1.0, 1.0);
     let mut rng = rand::thread_rng();
 	loop {
-		let p = 2.0* Vec3::new(range.ind_sample(&mut rng), range.ind_sample(&mut rng), range.ind_sample(&mut rng));
+		let p = 2.0* Vec3::new(
+			range.ind_sample(&mut rng),
+			range.ind_sample(&mut rng),
+			range.ind_sample(&mut rng)
+		);
 		if p.norm_squared() > 1.0 {
 			return p
 		}
